@@ -2,6 +2,7 @@ from groq import Groq
 from dotenv import load_dotenv
 import pyperclip
 from PIL import ImageGrab,Image
+from streamlit_lottie import st_lottie 
 import speech_recognition as sr
 import google.generativeai as genai
 import cv2
@@ -37,6 +38,18 @@ genai.configure(api_key=genai_key)
 groq_client=Groq(api_key= grok_key)
 
 web_cam=cv2.VideoCapture(0)
+
+url = requests.get( 
+    "https://lottie.host/28c7177c-6b0a-4786-99c6-7f5a703382a4/pcDtxI9NQr.json") 
+# Creating a blank dictionary to store JSON file, 
+# as their structure is similar to Python Dictionary 
+url_json = dict() 
+  
+if url.status_code == 200: 
+    url_json = url.json() 
+else: 
+    print("Error in the URL") 
+  
 
 text_languages = {
     "Hindi": "hi",
@@ -76,12 +89,16 @@ if 'messages' not in st.session_state:
     st.session_state['messages'] = load_chat_history()  # Load history into session state if not already
 
 st.title("Sarathi: Your multilingual AI Assistant")
+st_lottie(url_json) 
+
 
 with st.sidebar:
     selected_language = st.selectbox("Select a language", options=list(text_languages.keys()))
     st.write(f"Selected language: {selected_language}")
     target_lang = text_languages[selected_language]
     voice_gender = st.radio("Select Voice", ["male", "female"])
+    st.write("Chatbot responds in same language")
+    same_lang = st.radio("Converse in the same language", ["yes", "no"])
     if st.button("Delete Chat History"):
         st.session_state.messages = []
         save_chat_history([])
@@ -209,6 +226,63 @@ def vision_prompt(prompt,photo_path):
     )
     response = model.generate_content([prompt,img])
     return response.text
+
+def translation(prompt, source_lang,target_lang):
+    service_id_trans = "ai4bharat/indictrans-v2-all-gpu--t4"
+    
+    if same_lang=="no":
+        return prompt
+    if source_lang == "en":
+        return prompt
+    
+    # Headers as provided
+    headers = {
+        "Postman-Token": "<calculated when request is sent>", 
+        "Content-Type": "application/json",
+        "Content-Length": "<calculated when request is sent>", 
+        "Host": "<calculated when request is sent>",
+        "User-Agent": "PostmanRuntime/7.40.0",
+        "Accept": "*/*",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Connection": "keep-alive",
+        "User-Agent": "Python", 
+        "Authorization": bhashini_key
+    }
+    
+    # Correct body structure with sourceLanguage and targetLanguage properly set
+    body = {
+        "pipelineTasks": [
+            {
+                "taskType": "translation",
+                "config": {
+                    "language": {
+                        "sourceLanguage": source_lang,  # Source language (Malayalam in this case)
+                        "targetLanguage": target_lang   # Target language (English in this case)
+                    },
+                    "serviceId": service_id_trans
+                }
+            }
+        ],
+        "inputData": {
+            "input": [
+                {
+                    "source": prompt
+                }
+            ]
+        }
+    }
+    
+    # Make the POST request
+    response = requests.post("https://dhruva-api.bhashini.gov.in/services/inference/pipeline", headers=headers, json=body)
+    
+    # Get response data
+    response_data = response.json()
+    
+    # Extracting only the English translation (target)
+    translation_text = response_data['pipelineResponse'][0]['output'][0]['target']
+    with st.expander(f"Language converting to english from {source_lang}"):
+        st.write(translation_text)
+    return translation_text
 
 
 def bhashini_tts(target_lang,query,gender):
@@ -407,7 +481,6 @@ def start_listening():
         time.sleep(0.5)
 
 
-
 # Display chat messages
 for message in st.session_state['messages']:
     avatar = USER_AVATAR if message['role'] == 'user' else BOT_AVATAR
@@ -425,8 +498,7 @@ if prompt := st.chat_input("How can I help?"):
     
     with st.chat_message("assistant", avatar=BOT_AVATAR):
         message_placeholder = st.empty()
-        clean_prompt=prompt
-
+        clean_prompt=translation(prompt, target_lang,"en")
         if clean_prompt:
             call=function_call(clean_prompt)
             rag_answer=scheme_context(clean_prompt)
@@ -454,7 +526,9 @@ if prompt := st.chat_input("How can I help?"):
             else:
                 visual_context=None
             main_response = groq_prompt(prompt=clean_prompt,img_context=visual_context,vb=rag_answer)
-            st.markdown(main_response)
+            lang_for_tra="en"
+            translated_text=translation(main_response,lang_for_tra,target_lang)
+            st.markdown(translated_text)
             bhashini_tts(target_lang,main_response,voice_gender)
             st.session_state['messages'].append({"role": "assistant", "content": main_response})
             # Save chat history after interaction
