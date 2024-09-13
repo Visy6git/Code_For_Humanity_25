@@ -38,7 +38,7 @@ groq_client=Groq(api_key= grok_key)
 
 web_cam=cv2.VideoCapture(0)
 
-languages = {
+text_languages = {
     "Hindi": "hi",
     "Assamese": "as",
     "Gujarati": "gu",
@@ -77,9 +77,10 @@ if 'messages' not in st.session_state:
     st.session_state['messages'] = load_chat_history()  # Load history into session state if not already
 
 with st.sidebar:
-    selected_language = st.selectbox("Select a language", options=list(languages.keys()))
+    selected_language = st.selectbox("Select a language", options=list(text_languages.keys()))
     st.write(f"Selected language: {selected_language}")
-    target_lang = languages[selected_language]
+    target_lang = text_languages[selected_language]
+    voice_gender = st.radio("Select Voice", ["male", "female"])
     if st.button("Delete Chat History"):
         st.session_state.messages = []
         save_chat_history([])
@@ -265,7 +266,8 @@ def bhashini_tts(target_lang,query,gender):
     response1 = requests.post("https://dhruva-api.bhashini.gov.in/services/inference/pipeline", headers=headers,json=body)
     response_data = response1.json()
     target_text = response_data["pipelineResponse"][0]["output"][0]["target"]
-    print(target_text)
+    with st.expander(f"Text in: {selected_language}"):
+        st.write(target_text)
     D = response_data["pipelineResponse"][1]["audio"][0]["audioContent"]
     audio_data = base64.b64decode(D)
     audio_folder = "audio_files"
@@ -452,7 +454,6 @@ if prompt := st.chat_input("How can I help?"):
                 visual_context=None
             main_response = groq_prompt(prompt=clean_prompt,img_context=visual_context,vb=rag_answer)
             st.markdown(main_response)
-            voice_gender="female"
             bhashini_tts(target_lang,main_response,voice_gender)
             st.session_state['messages'].append({"role": "assistant", "content": main_response})
             # Save chat history after interaction
