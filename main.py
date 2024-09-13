@@ -38,6 +38,24 @@ groq_client=Groq(api_key= grok_key)
 
 web_cam=cv2.VideoCapture(0)
 
+languages = {
+    "Hindi": "hi",
+    "Assamese": "as",
+    "Gujarati": "gu",
+    "Marathi": "mr",
+    "Odia": "or",
+    "Punjabi": "pa",
+    "Bengali": "bn",
+    "Kannada": "kn",
+    "Malayalam": "ml",
+    "Tamil": "ta",
+    "Telugu": "te",
+    "English": "en",
+    "Bodo": "brx",
+    "Manipuri": "mni"
+}
+
+
 
 if "groq_model" not in st.session_state:
     st.session_state["groq_model"] = "llama3-70b-8192"
@@ -59,6 +77,9 @@ if 'messages' not in st.session_state:
     st.session_state['messages'] = load_chat_history()  # Load history into session state if not already
 
 with st.sidebar:
+    selected_language = st.selectbox("Select a language", options=list(languages.keys()))
+    st.write(f"Selected language: {selected_language}")
+    target_lang = languages[selected_language]
     if st.button("Delete Chat History"):
         st.session_state.messages = []
         save_chat_history([])
@@ -369,7 +390,6 @@ def callback(recognizer, audio):
         else:
             visual_context=None
         response = groq_prompt(prompt=clean_prompt,img_context=visual_context,vb=rag_answer)
-        target_lang="en"
         bhashini_tts(target_lang,response,voice_gender="male")
 
 
@@ -432,8 +452,7 @@ if prompt := st.chat_input("How can I help?"):
                 visual_context=None
             main_response = groq_prompt(prompt=clean_prompt,img_context=visual_context,vb=rag_answer)
             st.markdown(main_response)
-            target_lang="en"
-            voice_gender="male"
+            voice_gender="female"
             bhashini_tts(target_lang,main_response,voice_gender)
             st.session_state['messages'].append({"role": "assistant", "content": main_response})
             # Save chat history after interaction
