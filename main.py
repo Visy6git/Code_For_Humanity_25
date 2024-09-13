@@ -56,7 +56,6 @@ text_languages = {
 }
 
 
-
 if "groq_model" not in st.session_state:
     st.session_state["groq_model"] = "llama3-70b-8192"
 
@@ -75,6 +74,8 @@ def save_chat_history(messages):
 
 if 'messages' not in st.session_state:
     st.session_state['messages'] = load_chat_history()  # Load history into session state if not already
+
+st.title("Sarathi: Your multilingual AI Assistant")
 
 with st.sidebar:
     selected_language = st.selectbox("Select a language", options=list(text_languages.keys()))
