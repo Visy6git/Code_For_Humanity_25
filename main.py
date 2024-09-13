@@ -7,8 +7,11 @@ import speech_recognition as sr
 import google.generativeai as genai
 import cv2
 import os
+import datetime
+import wave
 import uuid
 import shelve
+from st_audiorec import st_audiorec
 import time
 import streamlit as st
 from llama_index.core import (
@@ -19,10 +22,14 @@ from llama_index.core import (
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.core.node_parser import SentenceSplitter
 from llama_index.llms.groq import Groq as Groq1
-
+import wave
+import datetime
+from st_audiorec import st_audiorec
 import requests
 import json
 import base64
+from st_audiorec import st_audiorec
+from streamlit_navigation_bar import st_navbar
 
 from pydub import AudioSegment
 
@@ -39,10 +46,12 @@ groq_client=Groq(api_key= grok_key)
 
 web_cam=cv2.VideoCapture(0)
 
+AUDIO_FOLDER = "audio_input"
+if not os.path.exists(AUDIO_FOLDER):
+    os.makedirs(AUDIO_FOLDER)
+
 url = requests.get( 
     "https://lottie.host/28c7177c-6b0a-4786-99c6-7f5a703382a4/pcDtxI9NQr.json") 
-# Creating a blank dictionary to store JSON file, 
-# as their structure is similar to Python Dictionary 
 url_json = dict() 
   
 if url.status_code == 200: 
@@ -50,6 +59,30 @@ if url.status_code == 200:
 else: 
     print("Error in the URL") 
   
+
+pages = ["Text Assistant 💻", "Voice Assistant 🤖"]
+styles = {
+    "nav": {
+        "background-color": "rgb(123, 209, 146)",
+    },
+    "div": {
+        "max-width": "32rem",
+    },
+    "span": {
+        "border-radius": "0.5rem",
+        "color": "rgb(49, 51, 63)",
+        "margin": "0 0.125rem",
+        "padding": "0.4375rem 0.625rem",
+    },
+    "active": {
+        "background-color": "rgba(255, 255, 255, 0.25)",
+    },
+    "hover": {
+        "background-color": "rgba(255, 255, 255, 0.35)",
+    },
+}
+
+page = st_navbar(pages, styles=styles)
 
 text_languages = {
     "Hindi": "hi",
@@ -162,6 +195,33 @@ def groq_prompt(prompt,img_context,vb):
     response=chat_completion.choices[0].message
     convo.append(response)
     return response.content
+
+def save_audio(file_name, audio_data):
+    # Save the audio file
+    with wave.open(file_name, 'wb') as wav_file:
+        wav_file.setnchannels(2)  # mono audio
+        wav_file.setsampwidth(2)  # sample width in bytes
+        wav_file.setframerate(44100)  # frame rate
+        wav_file.writeframes(audio_data)
+
+
+def audiorec_demo_app():
+    wav_audio_data = st_audiorec()  # Record audio
+    if wav_audio_data is not None:
+        # Display audio playback
+        col_playback, col_space = st.columns([0.58, 0.42])
+        # Save the audio file
+        unique_filename = datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + ".wav"
+        audio_file_path = os.path.join(AUDIO_FOLDER, unique_filename)
+        save_audio(audio_file_path, wav_audio_data)
+        with open(audio_file_path, "rb") as audio_file:
+            audio_data = audio_file.read()
+        base64_string = base64.b64encode(audio_data).decode('utf-8')
+        target_lang = "en"
+        translated=bhashini_stt(target_lang,base64_string)
+        print(translated)
+        return translated
+
 
 def function_call(prompt):
     sys_msg=(
@@ -422,7 +482,7 @@ def bhashini_stt(target_language,audio):
     response = requests.post("https://dhruva-api.bhashini.gov.in/services/inference/pipeline", headers=headers,json=body)
     response_data = response.json()
     source_text = response_data["pipelineResponse"][0]["output"][0]["source"]
-    print(source_text)
+    st.expander(source_text)
     target_text = response_data["pipelineResponse"][1]["output"][0]["target"]
     return target_text
 
@@ -434,13 +494,10 @@ def wav_to_text(audio_file_path):
     translated=bhashini_stt(target_lang,base64_string)
     return translated
 
-def callback(recognizer, audio):
-    audio_file_path = "prompt.wav"
-    with open(audio_file_path,'wb') as f:
-        f.write(audio.get_wav_data())
-    clean_prompt=wav_to_text(audio_file_path)
+def callback():
+    clean_prompt=audiorec_demo_app()
+    st.session_state['messages'].append({"role": "user", "content": clean_prompt})
     if clean_prompt:
-        print(f'User:{clean_prompt}')
         call=function_call(clean_prompt)
         rag_answer=scheme_context(clean_prompt)
         if 'take screenshot' in call:
@@ -456,81 +513,78 @@ def callback(recognizer, audio):
         elif 'extract clipboard' in call:
             print('Extracting clipboard...')
             paste=get_clipboard()
-            prompt = f'{clean_prompt}\n\n CLIPBOARD CONTENT: {paste}'
+            clean_prompt = f'{clean_prompt}\n\n CLIPBOARD CONTENT: {paste}'
             visual_context = None
         
         elif ' context' in call:
             print('Need more context...')
             pdf_context=pdf_context(clean_prompt)
-            prompt = f'{clean_prompt}\n\n PDF CONTEXT: {pdf_context}'
+            clean_prompt = f'{clean_prompt}\n\n PDF CONTEXT: {pdf_context}'
             visual_context = None
         else:
             visual_context=None
         response = groq_prompt(prompt=clean_prompt,img_context=visual_context,vb=rag_answer)
-        bhashini_tts(target_lang,response,voice_gender="male")
+        bhashini_tts(target_lang,response,voice_gender)
+        st.session_state['messages'].append({"role": "assistant", "content": response})
+        save_chat_history(st.session_state['messages'])
 
 
 
-def start_listening():
-    with source as s:
-        r.adjust_for_ambient_noise(s,duration=5)
-    print('\nHello how can i help you \n')
-    r.listen_in_background(source,callback)
-
-    while True:
-        time.sleep(0.5)
-
-
+if page == "Text Assistant 💻":
 # Display chat messages
-for message in st.session_state['messages']:
-    avatar = USER_AVATAR if message['role'] == 'user' else BOT_AVATAR
-    with st.chat_message(message['role'], avatar=avatar):
-        st.markdown(message['content'])
+    for message in st.session_state['messages']:
+        avatar = USER_AVATAR if message['role'] == 'user' else BOT_AVATAR
+        with st.chat_message(message['role'], avatar=avatar):
+            st.markdown(message['content'])
 
 
-# Main chat interface
-if prompt := st.chat_input("How can I help?"):
-    st.session_state['messages'].append({"role": "user", "content": prompt})
+    # Main chat interface
+    if prompt := st.chat_input("How can I help?"):
+        st.session_state['messages'].append({"role": "user", "content": prompt})
 
-    # Display user message
-    with st.chat_message("user", avatar=USER_AVATAR):
-        st.markdown(prompt)
+        # Display user message
+        with st.chat_message("user", avatar=USER_AVATAR):
+            st.markdown(prompt)
     
-    with st.chat_message("assistant", avatar=BOT_AVATAR):
-        message_placeholder = st.empty()
-        clean_prompt=translation(prompt, target_lang,"en")
-        if clean_prompt:
-            call=function_call(clean_prompt)
-            rag_answer=scheme_context(clean_prompt)
-            if 'take screenshot' in call:
-                print('Taking screenshot...')
-                take_screenshot()
-                visual_context=vision_prompt(prompt=clean_prompt,photo_path='screenshot.jpg')
+        with st.chat_message("assistant", avatar=BOT_AVATAR):
+            message_placeholder = st.empty()
+            clean_prompt=translation(prompt, target_lang,"en")
+            if clean_prompt:
+                call=function_call(clean_prompt)
+                rag_answer=scheme_context(clean_prompt)
+                if 'take screenshot' in call:
+                    print('Taking screenshot...')
+                    take_screenshot()
+                    visual_context=vision_prompt(prompt=clean_prompt,photo_path='screenshot.jpg')
 
-            elif 'capture webcam' in call:
-                print('Capturing webcam...')
-                web_cam_capture()
-                visual_context=vision_prompt(prompt=clean_prompt,photo_path='webcam.jpg')
+                elif 'capture webcam' in call:
+                    print('Capturing webcam...')
+                    web_cam_capture()
+                    visual_context=vision_prompt(prompt=clean_prompt,photo_path='webcam.jpg')
         
-            elif 'extract clipboard' in call:
-                print('Extracting clipboard...')
-                paste=get_clipboard()
-                prompt = f'{clean_prompt}\n\n CLIPBOARD CONTENT: {paste}'
-                visual_context = None
+                elif 'extract clipboard' in call:
+                    print('Extracting clipboard...')
+                    paste=get_clipboard()
+                    clean_prompt = f'{clean_prompt}\n\n CLIPBOARD CONTENT: {paste}'
+                    visual_context = None
             
-            elif ' context' in call:
-                print('Need more context...')
-                pdf_context=scheme_context(clean_prompt)
-                prompt = f'{clean_prompt}\n\n PDF CONTEXT: {pdf_context}'
-                visual_context = None
-            else:
-                visual_context=None
-            main_response = groq_prompt(prompt=clean_prompt,img_context=visual_context,vb=rag_answer)
-            lang_for_tra="en"
-            translated_text=translation(main_response,lang_for_tra,target_lang)
-            st.markdown(translated_text)
-            bhashini_tts(target_lang,main_response,voice_gender)
-            st.session_state['messages'].append({"role": "assistant", "content": main_response})
-            # Save chat history after interaction
-            save_chat_history(st.session_state['messages'])
+                elif ' context' in call:
+                    print('Need more context...')
+                    pdf_context=scheme_context(clean_prompt)
+                    clean_prompt = f'{clean_prompt}\n\n PDF CONTEXT: {pdf_context}'
+                    visual_context = None
+                else:
+                    visual_context=None
+                main_response = groq_prompt(prompt=clean_prompt,img_context=visual_context,vb=rag_answer)
+                lang_for_tra="en"
+                translated_text=translation(main_response,lang_for_tra,target_lang)
+                st.markdown(translated_text)
+                bhashini_tts(target_lang,main_response,voice_gender)
+                st.session_state['messages'].append({"role": "assistant", "content": main_response})
+                # Save chat history after interaction
+                save_chat_history(st.session_state['messages'])
 
+else:
+    st.sidebar.write("Voice Assistant 🤖")
+    callback()
+    
