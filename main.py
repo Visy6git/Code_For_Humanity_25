@@ -49,15 +49,6 @@ web_cam=cv2.VideoCapture(0)
 AUDIO_FOLDER = "audio_input"
 if not os.path.exists(AUDIO_FOLDER):
     os.makedirs(AUDIO_FOLDER)
-
-url = requests.get( 
-    "https://lottie.host/28c7177c-6b0a-4786-99c6-7f5a703382a4/pcDtxI9NQr.json") 
-url_json = dict() 
-  
-if url.status_code == 200: 
-    url_json = url.json() 
-else: 
-    print("Error in the URL") 
   
 
 pages = ["Text Assistant 💻", "Voice Assistant 🤖"]
@@ -122,7 +113,7 @@ if 'messages' not in st.session_state:
     st.session_state['messages'] = load_chat_history()  # Load history into session state if not already
 
 st.title("Sarathi: Your multilingual AI Assistant")
-st_lottie(url_json) 
+
 
 
 with st.sidebar:
